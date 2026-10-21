@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QE Requirement Center - GETS</title>
+  <title>QE Requirement Center - GETS PRO</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -14,7 +14,7 @@
     <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h1 class="text-xl font-bold tracking-tight">Quality Requirement & Change Center</h1>
-        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Effective Dates</p>
+        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Effective Dates Tracker</p>
       </div>
       <div class="flex gap-2">
         <button onclick="exportToCSV()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-2 rounded-lg text-sm font-medium transition shadow">
@@ -30,6 +30,9 @@
   <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-4 py-6">
     
+    <!-- Status / Diagnostic Banner -->
+    <div id="statusBanner" class="hidden mb-4 p-3 rounded-lg text-sm font-medium"></div>
+
     <!-- Filters & Search -->
     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
       <div class="w-full md:w-1/3">
@@ -71,7 +74,7 @@
         </thead>
         <tbody id="requirementsTableBody" class="divide-y divide-slate-100">
           <tr>
-            <td colspan="7" class="text-center py-8 text-slate-400">Connecting to Firebase...</td>
+            <td colspan="7" class="text-center py-8 text-slate-400">Connecting to Firebase (gets-pro)...</td>
           </tr>
         </tbody>
       </table>
@@ -88,8 +91,8 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name *</label>
-            <input type="text" id="custName" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Velocity" />
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name</label>
+            <input type="text" id="custName" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Velocity" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Part No / Model</label>
@@ -116,14 +119,14 @@
 
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Requirement / Change Details</label>
-          <textarea id="details" rows="3" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Optional: details, tolerances, notes..."></textarea>
+          <textarea id="details" rows="3" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Describe the tolerance change, visual defect limit, packing spec, etc."></textarea>
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Effective Date</label>
             <input type="date" id="effectiveDate" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" />
-            <span class="text-[10px] text-slate-400">Defaults to today if blank</span>
+            <span class="text-[10px] text-slate-400">Defaults to today if left blank</span>
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
@@ -149,9 +152,10 @@
     </div>
   </div>
 
-  <!-- FIREBASE SCRIPT -->
+  <!-- FIREBASE SCRIPT (GETS-PRO) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
     import { 
       getFirestore, 
       collection, 
@@ -164,24 +168,25 @@
       orderBy 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+    // Your new Firebase configuration
     const firebaseConfig = {
-      apiKey: "AIzaSyBY8HcY-H98RlGPAL4u9jHqzLfu6tnfreg",
-      authDomain: "gets-requirement.firebaseapp.com",
-      databaseURL: "https://gets-requirement-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "gets-requirement",
-      storageBucket: "gets-requirement.firebasestorage.app",
-      messagingSenderId: "826206294042",
-      appId: "1:826206294042:web:2c6c6663a13c01974481a3",
-      measurementId: "G-ZVZ1DPPMTQ"
+      apiKey: "AIzaSyAt4zHjnll8FC_Dckm1dZSt2G7m27Ii3VQ",
+      authDomain: "gets-pro.firebaseapp.com",
+      projectId: "gets-pro",
+      storageBucket: "gets-pro.firebasestorage.app",
+      messagingSenderId: "733073834741",
+      appId: "1:733073834741:web:50c6f53e1b46e7c6767bbc",
+      measurementId: "G-Z9WJ57TJRS"
     };
 
     const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
     const db = getFirestore(app);
     const reqCollection = collection(db, "customer_requirements");
 
     let localRecords = [];
 
-    // Real-Time Listener
+    // Real-Time Firestore Synchronization
     const q = query(reqCollection, orderBy("effectiveDate", "desc"));
     onSnapshot(q, (snapshot) => {
       localRecords = [];
@@ -191,9 +196,13 @@
       renderTable(localRecords);
     }, (error) => {
       console.error("Firestore Error: ", error);
+      const banner = document.getElementById("statusBanner");
+      banner.className = "mb-4 p-3 rounded-lg text-sm font-medium bg-red-100 text-red-800 border border-red-200 block";
+      banner.innerHTML = `⚠️ <b>Firebase Error:</b> ${error.message}. Please make sure you have created the <b>Firestore Database</b> in the Firebase console and set Rules to allow read/write.`;
+      
       document.getElementById("requirementsTableBody").innerHTML = `
         <tr><td colspan="7" class="text-center py-6 text-red-500 font-medium">
-          ⚠️ Firestore error: ${error.message}. Please check your Firebase Security Rules.
+          Database error: ${error.message}
         </td></tr>
       `;
     });
@@ -203,7 +212,7 @@
       tbody.innerHTML = "";
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to create one.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to add your first record.</td></tr>`;
         return;
       }
 
@@ -219,13 +228,13 @@
         const tr = document.createElement("tr");
         tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
         tr.innerHTML = `
-          <td class="p-3 font-semibold text-slate-900">${escapeHtml(item.customer)}</td>
+          <td class="p-3 font-semibold text-slate-900">${escapeHtml(item.customer || "-")}</td>
           <td class="p-3 font-mono text-xs text-indigo-700 bg-indigo-50/50 rounded inline-block my-2">${escapeHtml(item.partNo || "-")}</td>
           <td class="p-3 max-w-sm">
             <div class="font-medium text-slate-800 whitespace-pre-wrap">${escapeHtml(item.details || "-")}</div>
             ${item.stations ? `<span class="text-xs text-slate-400 block mt-1">📍 Station: ${escapeHtml(item.stations)}</span>` : ""}
           </td>
-          <td class="p-3 font-mono text-slate-600 whitespace-nowrap">${escapeHtml(item.effectiveDate)}</td>
+          <td class="p-3 font-mono text-slate-600 whitespace-nowrap">${escapeHtml(item.effectiveDate || "-")}</td>
           <td class="p-3">
             <span class="text-xs font-medium text-slate-700 block">${escapeHtml(item.source)}</span>
             <span class="text-[11px] text-slate-400 block">${escapeHtml(item.referenceDoc || "-")}</span>
@@ -263,24 +272,24 @@
       renderTable(filtered);
     };
 
-    // Save or Update Record (With default date fallback)
+    // Save or Update Record (Optional Fields Supported)
     window.saveRequirement = async function(e) {
       e.preventDefault();
       const btn = document.getElementById("saveBtn");
       btn.disabled = true;
-      btn.innerText = "Saving...";
+      btn.innerText = "Saving to Cloud...";
 
       const id = document.getElementById("recordId").value;
       const effectiveDateInput = document.getElementById("effectiveDate").value;
       const today = new Date().toISOString().slice(0, 10);
 
       const record = {
-        customer: document.getElementById("custName").value.trim() || "Unknown Customer",
+        customer: document.getElementById("custName").value.trim() || "General Customer",
         partNo: document.getElementById("partNo").value.trim() || "-",
         source: document.getElementById("source").value || "Customer Email",
         referenceDoc: document.getElementById("referenceDoc").value.trim() || "",
-        details: document.getElementById("details").value.trim() || "No specific details provided",
-        effectiveDate: effectiveDateInput || today, // Defaults to today if left empty
+        details: document.getElementById("details").value.trim() || "-",
+        effectiveDate: effectiveDateInput || today,
         status: document.getElementById("status").value || "Active",
         stations: document.getElementById("stations").value.trim() || "",
         updatedAt: new Date().toISOString()
@@ -296,7 +305,7 @@
         window.closeModal();
       } catch (err) {
         console.error("Save error: ", err);
-        alert("Failed to save: " + err.message + "\n\nTip: Please verify that Firestore Database is created and Rules are published to allow read/write.");
+        alert("Failed to save: " + err.message + "\n\nDid you create the Firestore Database and publish the test mode rules in project 'gets-pro'?");
       } finally {
         btn.disabled = false;
         btn.innerText = "Save Record";
