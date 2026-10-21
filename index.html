@@ -14,7 +14,7 @@
     <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h1 class="text-xl font-bold tracking-tight">Quality Requirement & Change Center</h1>
-        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Attachments</p>
+        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Attached Proof</p>
       </div>
       <div class="flex gap-2">
         <button onclick="exportToCSV()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-2 rounded-lg text-sm font-medium transition shadow">
@@ -30,9 +30,6 @@
   <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-4 py-6">
     
-    <!-- Status / Diagnostic Banner -->
-    <div id="statusBanner" class="hidden mb-4 p-3 rounded-lg text-sm font-medium"></div>
-
     <!-- Filters & Search -->
     <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
       <div class="w-full md:w-1/3">
@@ -66,7 +63,7 @@
             <th class="p-3">Customer / Project</th>
             <th class="p-3">Part No / Model</th>
             <th class="p-3">Requirement / Change Detail</th>
-            <th class="p-3">Attachment</th>
+            <th class="p-3">Attachment / Proof</th>
             <th class="p-3">Effective Date</th>
             <th class="p-3">Origin / Source</th>
             <th class="p-3">Status</th>
@@ -75,21 +72,21 @@
         </thead>
         <tbody id="requirementsTableBody" class="divide-y divide-slate-100">
           <tr>
-            <td colspan="8" class="text-center py-8 text-slate-400">Connecting to Firebase...</td>
+            <td colspan="8" class="text-center py-8 text-slate-400">Loading records from Firebase...</td>
           </tr>
         </tbody>
       </table>
     </div>
   </main>
 
-  <!-- Modal Form (Add / Edit) -->
+  <!-- Add / Edit Modal -->
   <div id="recordModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center p-4 z-50">
     <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
       <h2 id="modalTitle" class="text-lg font-bold text-slate-800 mb-4">Add Requirement Record</h2>
       
       <form id="reqForm" onsubmit="saveRequirement(event)" class="space-y-4 text-sm">
         <input type="hidden" id="recordId" />
-        <input type="hidden" id="existingAttachmentUrl" />
+        <input type="hidden" id="existingAttachmentData" />
         <input type="hidden" id="existingAttachmentType" />
         <input type="hidden" id="existingAttachmentName" />
 
@@ -126,16 +123,19 @@
           <textarea id="details" rows="3" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Describe the tolerance change, visual defect limit, packing spec, etc."></textarea>
         </div>
 
-        <!-- Attachment Input -->
+        <!-- File Upload Section -->
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Attach File (Image / PDF / Word / Excel)</label>
-          <input type="file" id="fileAttachment" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
-            class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Upload Proof / Attachment (Image / PDF / Doc)</label>
+          <input type="file" id="fileAttachment" accept="image/*,.pdf,.doc,.docx" 
+            class="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
+          <p class="text-[11px] text-slate-400 mt-1">Photos are automatically compressed. PDF/Docs under 800KB supported.</p>
           
-          <div id="currentAttachmentInfo" class="mt-2 text-xs text-slate-500 hidden flex items-center gap-2">
-            <span>Current attachment:</span>
-            <span id="currentAttachmentName" class="font-medium text-indigo-600 truncate max-w-[200px]"></span>
-            <button type="button" onclick="removeCurrentAttachment()" class="text-rose-600 hover:underline">Remove</button>
+          <div id="currentAttachmentInfo" class="mt-2 text-xs text-slate-600 hidden flex items-center justify-between bg-white p-2 border rounded">
+            <div class="flex items-center gap-1 truncate max-w-[220px]">
+              <span>📎 Current:</span>
+              <span id="currentAttachmentName" class="font-medium text-indigo-600 truncate"></span>
+            </div>
+            <button type="button" onclick="removeCurrentAttachment()" class="text-rose-600 font-semibold hover:underline text-xs">Remove</button>
           </div>
         </div>
 
@@ -169,10 +169,17 @@
     </div>
   </div>
 
-  <!-- FIREBASE SCRIPT (GETS-PRO WITH STORAGE) -->
+  <!-- Image Viewer Modal (Click to View Full Size) -->
+  <div id="imageViewerModal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50" onclick="closeImageViewer()">
+    <div class="max-w-4xl max-h-[90vh] bg-white p-2 rounded-xl shadow-2xl relative" onclick="event.stopPropagation()">
+      <button onclick="closeImageViewer()" class="absolute -top-3 -right-3 bg-white text-slate-800 rounded-full w-8 h-8 font-bold shadow hover:bg-slate-100">✕</button>
+      <img id="fullImagePreview" src="" alt="Full Preview" class="max-h-[85vh] max-w-full rounded-lg object-contain" />
+    </div>
+  </div>
+
+  <!-- FIREBASE SCRIPTS -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
     import { 
       getFirestore, 
       collection, 
@@ -184,12 +191,6 @@
       query, 
       orderBy 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { 
-      getStorage, 
-      ref, 
-      uploadBytes, 
-      getDownloadURL 
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAt4zHjnll8FC_Dckm1dZSt2G7m27Ii3VQ",
@@ -202,14 +203,12 @@
     };
 
     const app = initializeApp(firebaseConfig);
-    const analytics = getAnalytics(app);
     const db = getFirestore(app);
-    const storage = getStorage(app);
     const reqCollection = collection(db, "customer_requirements");
 
     let localRecords = [];
 
-    // Real-Time Data Sync
+    // Real-Time Listener
     const q = query(reqCollection, orderBy("effectiveDate", "desc"));
     onSnapshot(q, (snapshot) => {
       localRecords = [];
@@ -219,18 +218,20 @@
       renderTable(localRecords);
     }, (error) => {
       console.error("Firestore Error: ", error);
-      const banner = document.getElementById("statusBanner");
-      banner.className = "mb-4 p-3 rounded-lg text-sm font-medium bg-red-100 text-red-800 border border-red-200 block";
-      banner.innerHTML = `⚠️ <b>Firebase Error:</b> ${error.message}`;
+      document.getElementById("requirementsTableBody").innerHTML = `
+        <tr><td colspan="8" class="text-center py-6 text-red-500 font-medium">
+          Error: ${error.message}
+        </td></tr>
+      `;
     });
 
-    // Render Table with Attachments Display
+    // Render Table
     function renderTable(data) {
       const tbody = document.getElementById("requirementsTableBody");
       tbody.innerHTML = "";
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to add one.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to create one.</td></tr>`;
         return;
       }
 
@@ -243,28 +244,31 @@
         };
         const statusBadge = badgeColors[item.status] || "bg-slate-100 text-slate-800";
 
-        // Generate attachment preview HTML
+        // Display Attachment preview
         let attachmentHtml = `<span class="text-xs text-slate-300">-</span>`;
-        if (item.attachment && item.attachment.url) {
+        if (item.attachment && item.attachment.data) {
           const isImage = item.attachment.type && item.attachment.type.startsWith("image/");
           const isPdf = item.attachment.type && item.attachment.type.includes("pdf");
 
           if (isImage) {
             attachmentHtml = `
-              <a href="${item.attachment.url}" target="_blank" title="Click to view full image">
-                <img src="${item.attachment.url}" alt="Attachment" class="h-12 w-12 object-cover rounded-lg border border-slate-200 hover:scale-105 transition shadow-sm hover:shadow" />
-              </a>
+              <img src="${item.attachment.data}" alt="thumbnail" 
+                onclick="viewImage('${item.attachment.data}')"
+                class="h-12 w-12 object-cover rounded-lg border border-slate-200 cursor-pointer hover:scale-105 transition shadow-sm" 
+                title="Click to view full image" />
             `;
           } else if (isPdf) {
             attachmentHtml = `
-              <a href="${item.attachment.url}" target="_blank" class="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg shadow-sm transition">
+              <a href="${item.attachment.data}" download="${item.attachment.name || 'document.pdf'}" 
+                class="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg shadow-sm">
                 📄 View PDF
               </a>
             `;
           } else {
             attachmentHtml = `
-              <a href="${item.attachment.url}" target="_blank" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg shadow-sm transition">
-                📎 Document
+              <a href="${item.attachment.data}" download="${item.attachment.name || 'document'}" 
+                class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg shadow-sm">
+                📎 Download Doc
               </a>
             `;
           }
@@ -297,23 +301,85 @@
       });
     }
 
-    // Save with File Upload
+    // Helper: Compress Image to Base64
+    function processFile(file) {
+      return new Promise((resolve, reject) => {
+        if (file.size > 15 * 1024 * 1024) {
+          return reject(new Error("File is too large! Maximum limit is 15MB."));
+        }
+
+        const reader = new FileReader();
+        if (file.type.startsWith("image/")) {
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              // Canvas compression
+              const canvas = document.createElement("canvas");
+              let width = img.width;
+              let height = img.height;
+              const maxDim = 1200; // Resize large camera photos
+
+              if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                  height = Math.round((height * maxDim) / width);
+                  width = maxDim;
+                } else {
+                  width = Math.round((width * maxDim) / height);
+                  height = maxDim;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0, width, height);
+
+              // 75% quality JPEG
+              const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+              resolve({
+                name: file.name,
+                type: "image/jpeg",
+                data: compressedDataUrl
+              });
+            };
+            img.onerror = () => reject(new Error("Failed to load image."));
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        } else {
+          // PDF or document
+          if (file.size > 800 * 1024) {
+            return reject(new Error("PDF / Documents must be under 800KB."));
+          }
+          reader.onload = (e) => {
+            resolve({
+              name: file.name,
+              type: file.type || "application/octet-stream",
+              data: e.target.result
+            });
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    // Save Record
     window.saveRequirement = async function(e) {
       e.preventDefault();
       const btn = document.getElementById("saveBtn");
       btn.disabled = true;
+      btn.innerText = "Processing & Saving...";
 
       const id = document.getElementById("recordId").value;
       const fileInput = document.getElementById("fileAttachment");
       const effectiveDateInput = document.getElementById("effectiveDate").value;
       const today = new Date().toISOString().slice(0, 10);
 
-      // Handle Attachment logic
       let attachment = null;
-      const existingUrl = document.getElementById("existingAttachmentUrl").value;
-      if (existingUrl) {
+      const existingData = document.getElementById("existingAttachmentData").value;
+      if (existingData) {
         attachment = {
-          url: existingUrl,
+          data: existingData,
           name: document.getElementById("existingAttachmentName").value,
           type: document.getElementById("existingAttachmentType").value
         };
@@ -321,17 +387,8 @@
 
       try {
         if (fileInput.files.length > 0) {
-          const file = fileInput.files[0];
-          btn.innerText = "Uploading File...";
-          const fileRef = ref(storage, `requirements/${Date.now()}_${file.name}`);
-          const uploadSnapshot = await uploadBytes(fileRef, file);
-          const downloadUrl = await getDownloadURL(uploadSnapshot.ref);
-
-          attachment = {
-            url: downloadUrl,
-            name: file.name,
-            type: file.type || "application/octet-stream"
-          };
+          btn.innerText = "Compressing File...";
+          attachment = await processFile(fileInput.files[0]);
         }
 
         btn.innerText = "Saving to Database...";
@@ -359,7 +416,7 @@
         window.closeModal();
       } catch (err) {
         console.error("Save error:", err);
-        alert("Failed to save: " + err.message + "\n\nTip: Did you enable Firebase Storage rules?");
+        alert(err.message);
       } finally {
         btn.disabled = false;
         btn.innerText = "Save Record";
@@ -380,9 +437,8 @@
       document.getElementById("status").value = item.status || "Active";
       document.getElementById("stations").value = item.stations || "";
 
-      // Fill existing attachment
-      if (item.attachment && item.attachment.url) {
-        document.getElementById("existingAttachmentUrl").value = item.attachment.url;
+      if (item.attachment && item.attachment.data) {
+        document.getElementById("existingAttachmentData").value = item.attachment.data;
         document.getElementById("existingAttachmentName").value = item.attachment.name || "Attached File";
         document.getElementById("existingAttachmentType").value = item.attachment.type || "";
         document.getElementById("currentAttachmentName").innerText = item.attachment.name || "Attached File";
@@ -396,7 +452,7 @@
     };
 
     window.removeCurrentAttachment = function() {
-      document.getElementById("existingAttachmentUrl").value = "";
+      document.getElementById("existingAttachmentData").value = "";
       document.getElementById("existingAttachmentName").value = "";
       document.getElementById("existingAttachmentType").value = "";
       document.getElementById("currentAttachmentInfo").classList.add("hidden");
@@ -410,6 +466,16 @@
           alert("Error deleting record: " + err.message);
         }
       }
+    };
+
+    window.viewImage = function(src) {
+      document.getElementById("fullImagePreview").src = src;
+      document.getElementById("imageViewerModal").classList.remove("hidden");
+    };
+
+    window.closeImageViewer = function() {
+      document.getElementById("imageViewerModal").classList.add("hidden");
+      document.getElementById("fullImagePreview").src = "";
     };
 
     window.filterData = function() {
@@ -434,10 +500,10 @@
     };
 
     window.exportToCSV = function() {
-      if (!localRecords.length) return alert("No records to export.");
-      let csv = "Customer,Part Number,Details,Effective Date,Source,Reference,Status,Stations,Attachment URL\n";
+      if (!localRecords.length) return alert("No records available to export.");
+      let csv = "Customer,Part Number,Details,Effective Date,Source,Reference,Status,Stations\n";
       localRecords.forEach((r) => {
-        csv += `"${r.customer || ''}","${r.partNo || ''}","${(r.details || '').replace(/"/g, '""')}","${r.effectiveDate || ''}","${r.source || ''}","${r.referenceDoc || ''}","${r.status || ''}","${r.stations || ''}","${r.attachment?.url || ''}"\n`;
+        csv += `"${r.customer || ''}","${r.partNo || ''}","${(r.details || '').replace(/"/g, '""')}","${r.effectiveDate || ''}","${r.source || ''}","${r.referenceDoc || ''}","${r.status || ''}","${r.stations || ''}"\n`;
       });
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
