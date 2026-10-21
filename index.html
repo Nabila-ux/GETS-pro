@@ -14,7 +14,7 @@
     <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h1 class="text-xl font-bold tracking-tight">Quality Requirement & Change Center</h1>
-        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Effective Dates Tracker</p>
+        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Attachments</p>
       </div>
       <div class="flex gap-2">
         <button onclick="exportToCSV()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-2 rounded-lg text-sm font-medium transition shadow">
@@ -66,6 +66,7 @@
             <th class="p-3">Customer / Project</th>
             <th class="p-3">Part No / Model</th>
             <th class="p-3">Requirement / Change Detail</th>
+            <th class="p-3">Attachment</th>
             <th class="p-3">Effective Date</th>
             <th class="p-3">Origin / Source</th>
             <th class="p-3">Status</th>
@@ -74,7 +75,7 @@
         </thead>
         <tbody id="requirementsTableBody" class="divide-y divide-slate-100">
           <tr>
-            <td colspan="7" class="text-center py-8 text-slate-400">Connecting to Firebase (gets-pro)...</td>
+            <td colspan="8" class="text-center py-8 text-slate-400">Connecting to Firebase...</td>
           </tr>
         </tbody>
       </table>
@@ -88,6 +89,9 @@
       
       <form id="reqForm" onsubmit="saveRequirement(event)" class="space-y-4 text-sm">
         <input type="hidden" id="recordId" />
+        <input type="hidden" id="existingAttachmentUrl" />
+        <input type="hidden" id="existingAttachmentType" />
+        <input type="hidden" id="existingAttachmentName" />
 
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -122,11 +126,24 @@
           <textarea id="details" rows="3" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Describe the tolerance change, visual defect limit, packing spec, etc."></textarea>
         </div>
 
+        <!-- Attachment Input -->
+        <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Attach File (Image / PDF / Word / Excel)</label>
+          <input type="file" id="fileAttachment" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
+            class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+          
+          <div id="currentAttachmentInfo" class="mt-2 text-xs text-slate-500 hidden flex items-center gap-2">
+            <span>Current attachment:</span>
+            <span id="currentAttachmentName" class="font-medium text-indigo-600 truncate max-w-[200px]"></span>
+            <button type="button" onclick="removeCurrentAttachment()" class="text-rose-600 hover:underline">Remove</button>
+          </div>
+        </div>
+
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Effective Date</label>
             <input type="date" id="effectiveDate" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" />
-            <span class="text-[10px] text-slate-400">Defaults to today if left blank</span>
+            <span class="text-[10px] text-slate-400">Defaults to today if blank</span>
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
@@ -152,7 +169,7 @@
     </div>
   </div>
 
-  <!-- FIREBASE SCRIPT (GETS-PRO) -->
+  <!-- FIREBASE SCRIPT (GETS-PRO WITH STORAGE) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js";
@@ -167,8 +184,13 @@
       query, 
       orderBy 
     } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { 
+      getStorage, 
+      ref, 
+      uploadBytes, 
+      getDownloadURL 
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-    // Your new Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyAt4zHjnll8FC_Dckm1dZSt2G7m27Ii3VQ",
       authDomain: "gets-pro.firebaseapp.com",
@@ -182,11 +204,12 @@
     const app = initializeApp(firebaseConfig);
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const reqCollection = collection(db, "customer_requirements");
 
     let localRecords = [];
 
-    // Real-Time Firestore Synchronization
+    // Real-Time Data Sync
     const q = query(reqCollection, orderBy("effectiveDate", "desc"));
     onSnapshot(q, (snapshot) => {
       localRecords = [];
@@ -198,21 +221,16 @@
       console.error("Firestore Error: ", error);
       const banner = document.getElementById("statusBanner");
       banner.className = "mb-4 p-3 rounded-lg text-sm font-medium bg-red-100 text-red-800 border border-red-200 block";
-      banner.innerHTML = `⚠️ <b>Firebase Error:</b> ${error.message}. Please make sure you have created the <b>Firestore Database</b> in the Firebase console and set Rules to allow read/write.`;
-      
-      document.getElementById("requirementsTableBody").innerHTML = `
-        <tr><td colspan="7" class="text-center py-6 text-red-500 font-medium">
-          Database error: ${error.message}
-        </td></tr>
-      `;
+      banner.innerHTML = `⚠️ <b>Firebase Error:</b> ${error.message}`;
     });
 
+    // Render Table with Attachments Display
     function renderTable(data) {
       const tbody = document.getElementById("requirementsTableBody");
       tbody.innerHTML = "";
 
       if (data.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to add your first record.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-400">No records found. Click "+ Add Requirement" to add one.</td></tr>`;
         return;
       }
 
@@ -225,6 +243,33 @@
         };
         const statusBadge = badgeColors[item.status] || "bg-slate-100 text-slate-800";
 
+        // Generate attachment preview HTML
+        let attachmentHtml = `<span class="text-xs text-slate-300">-</span>`;
+        if (item.attachment && item.attachment.url) {
+          const isImage = item.attachment.type && item.attachment.type.startsWith("image/");
+          const isPdf = item.attachment.type && item.attachment.type.includes("pdf");
+
+          if (isImage) {
+            attachmentHtml = `
+              <a href="${item.attachment.url}" target="_blank" title="Click to view full image">
+                <img src="${item.attachment.url}" alt="Attachment" class="h-12 w-12 object-cover rounded-lg border border-slate-200 hover:scale-105 transition shadow-sm hover:shadow" />
+              </a>
+            `;
+          } else if (isPdf) {
+            attachmentHtml = `
+              <a href="${item.attachment.url}" target="_blank" class="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg shadow-sm transition">
+                📄 View PDF
+              </a>
+            `;
+          } else {
+            attachmentHtml = `
+              <a href="${item.attachment.url}" target="_blank" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg shadow-sm transition">
+                📎 Document
+              </a>
+            `;
+          }
+        }
+
         const tr = document.createElement("tr");
         tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
         tr.innerHTML = `
@@ -234,6 +279,7 @@
             <div class="font-medium text-slate-800 whitespace-pre-wrap">${escapeHtml(item.details || "-")}</div>
             ${item.stations ? `<span class="text-xs text-slate-400 block mt-1">📍 Station: ${escapeHtml(item.stations)}</span>` : ""}
           </td>
+          <td class="p-3 whitespace-nowrap">${attachmentHtml}</td>
           <td class="p-3 font-mono text-slate-600 whitespace-nowrap">${escapeHtml(item.effectiveDate || "-")}</td>
           <td class="p-3">
             <span class="text-xs font-medium text-slate-700 block">${escapeHtml(item.source)}</span>
@@ -250,6 +296,121 @@
         tbody.appendChild(tr);
       });
     }
+
+    // Save with File Upload
+    window.saveRequirement = async function(e) {
+      e.preventDefault();
+      const btn = document.getElementById("saveBtn");
+      btn.disabled = true;
+
+      const id = document.getElementById("recordId").value;
+      const fileInput = document.getElementById("fileAttachment");
+      const effectiveDateInput = document.getElementById("effectiveDate").value;
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Handle Attachment logic
+      let attachment = null;
+      const existingUrl = document.getElementById("existingAttachmentUrl").value;
+      if (existingUrl) {
+        attachment = {
+          url: existingUrl,
+          name: document.getElementById("existingAttachmentName").value,
+          type: document.getElementById("existingAttachmentType").value
+        };
+      }
+
+      try {
+        if (fileInput.files.length > 0) {
+          const file = fileInput.files[0];
+          btn.innerText = "Uploading File...";
+          const fileRef = ref(storage, `requirements/${Date.now()}_${file.name}`);
+          const uploadSnapshot = await uploadBytes(fileRef, file);
+          const downloadUrl = await getDownloadURL(uploadSnapshot.ref);
+
+          attachment = {
+            url: downloadUrl,
+            name: file.name,
+            type: file.type || "application/octet-stream"
+          };
+        }
+
+        btn.innerText = "Saving to Database...";
+
+        const record = {
+          customer: document.getElementById("custName").value.trim() || "General Customer",
+          partNo: document.getElementById("partNo").value.trim() || "-",
+          source: document.getElementById("source").value || "Customer Email",
+          referenceDoc: document.getElementById("referenceDoc").value.trim() || "",
+          details: document.getElementById("details").value.trim() || "-",
+          effectiveDate: effectiveDateInput || today,
+          status: document.getElementById("status").value || "Active",
+          stations: document.getElementById("stations").value.trim() || "",
+          attachment: attachment,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (id) {
+          await updateDoc(doc(db, "customer_requirements", id), record);
+        } else {
+          record.createdAt = new Date().toISOString();
+          await addDoc(reqCollection, record);
+        }
+
+        window.closeModal();
+      } catch (err) {
+        console.error("Save error:", err);
+        alert("Failed to save: " + err.message + "\n\nTip: Did you enable Firebase Storage rules?");
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Save Record";
+      }
+    };
+
+    window.editRecord = function(id) {
+      const item = localRecords.find((r) => r.id === id);
+      if (!item) return;
+
+      document.getElementById("recordId").value = item.id;
+      document.getElementById("custName").value = item.customer || "";
+      document.getElementById("partNo").value = item.partNo || "";
+      document.getElementById("source").value = item.source || "Customer Email";
+      document.getElementById("referenceDoc").value = item.referenceDoc || "";
+      document.getElementById("details").value = item.details || "";
+      document.getElementById("effectiveDate").value = item.effectiveDate || "";
+      document.getElementById("status").value = item.status || "Active";
+      document.getElementById("stations").value = item.stations || "";
+
+      // Fill existing attachment
+      if (item.attachment && item.attachment.url) {
+        document.getElementById("existingAttachmentUrl").value = item.attachment.url;
+        document.getElementById("existingAttachmentName").value = item.attachment.name || "Attached File";
+        document.getElementById("existingAttachmentType").value = item.attachment.type || "";
+        document.getElementById("currentAttachmentName").innerText = item.attachment.name || "Attached File";
+        document.getElementById("currentAttachmentInfo").classList.remove("hidden");
+      } else {
+        window.removeCurrentAttachment();
+      }
+
+      document.getElementById("modalTitle").innerText = "Edit Requirement Record";
+      window.openModal();
+    };
+
+    window.removeCurrentAttachment = function() {
+      document.getElementById("existingAttachmentUrl").value = "";
+      document.getElementById("existingAttachmentName").value = "";
+      document.getElementById("existingAttachmentType").value = "";
+      document.getElementById("currentAttachmentInfo").classList.add("hidden");
+    };
+
+    window.deleteRecord = async function(id) {
+      if (confirm("Are you sure you want to delete this requirement record?")) {
+        try {
+          await deleteDoc(doc(db, "customer_requirements", id));
+        } catch (err) {
+          alert("Error deleting record: " + err.message);
+        }
+      }
+    };
 
     window.filterData = function() {
       const queryText = document.getElementById("searchInput").value.toLowerCase();
@@ -272,79 +433,11 @@
       renderTable(filtered);
     };
 
-    // Save or Update Record (Optional Fields Supported)
-    window.saveRequirement = async function(e) {
-      e.preventDefault();
-      const btn = document.getElementById("saveBtn");
-      btn.disabled = true;
-      btn.innerText = "Saving to Cloud...";
-
-      const id = document.getElementById("recordId").value;
-      const effectiveDateInput = document.getElementById("effectiveDate").value;
-      const today = new Date().toISOString().slice(0, 10);
-
-      const record = {
-        customer: document.getElementById("custName").value.trim() || "General Customer",
-        partNo: document.getElementById("partNo").value.trim() || "-",
-        source: document.getElementById("source").value || "Customer Email",
-        referenceDoc: document.getElementById("referenceDoc").value.trim() || "",
-        details: document.getElementById("details").value.trim() || "-",
-        effectiveDate: effectiveDateInput || today,
-        status: document.getElementById("status").value || "Active",
-        stations: document.getElementById("stations").value.trim() || "",
-        updatedAt: new Date().toISOString()
-      };
-
-      try {
-        if (id) {
-          await updateDoc(doc(db, "customer_requirements", id), record);
-        } else {
-          record.createdAt = new Date().toISOString();
-          await addDoc(reqCollection, record);
-        }
-        window.closeModal();
-      } catch (err) {
-        console.error("Save error: ", err);
-        alert("Failed to save: " + err.message + "\n\nDid you create the Firestore Database and publish the test mode rules in project 'gets-pro'?");
-      } finally {
-        btn.disabled = false;
-        btn.innerText = "Save Record";
-      }
-    };
-
-    window.editRecord = function(id) {
-      const item = localRecords.find((r) => r.id === id);
-      if (!item) return;
-
-      document.getElementById("recordId").value = item.id;
-      document.getElementById("custName").value = item.customer || "";
-      document.getElementById("partNo").value = item.partNo || "";
-      document.getElementById("source").value = item.source || "Customer Email";
-      document.getElementById("referenceDoc").value = item.referenceDoc || "";
-      document.getElementById("details").value = item.details || "";
-      document.getElementById("effectiveDate").value = item.effectiveDate || "";
-      document.getElementById("status").value = item.status || "Active";
-      document.getElementById("stations").value = item.stations || "";
-
-      document.getElementById("modalTitle").innerText = "Edit Requirement Record";
-      window.openModal();
-    };
-
-    window.deleteRecord = async function(id) {
-      if (confirm("Are you sure you want to delete this requirement record?")) {
-        try {
-          await deleteDoc(doc(db, "customer_requirements", id));
-        } catch (err) {
-          alert("Error deleting record: " + err.message);
-        }
-      }
-    };
-
     window.exportToCSV = function() {
-      if (!localRecords.length) return alert("No records available to export.");
-      let csv = "Customer,Part Number,Details,Effective Date,Source,Reference,Status,Stations\n";
+      if (!localRecords.length) return alert("No records to export.");
+      let csv = "Customer,Part Number,Details,Effective Date,Source,Reference,Status,Stations,Attachment URL\n";
       localRecords.forEach((r) => {
-        csv += `"${r.customer || ''}","${r.partNo || ''}","${(r.details || '').replace(/"/g, '""')}","${r.effectiveDate || ''}","${r.source || ''}","${r.referenceDoc || ''}","${r.status || ''}","${r.stations || ''}"\n`;
+        csv += `"${r.customer || ''}","${r.partNo || ''}","${(r.details || '').replace(/"/g, '""')}","${r.effectiveDate || ''}","${r.source || ''}","${r.referenceDoc || ''}","${r.status || ''}","${r.stations || ''}","${r.attachment?.url || ''}"\n`;
       });
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
@@ -360,6 +453,7 @@
     window.closeModal = function() {
       document.getElementById("reqForm").reset();
       document.getElementById("recordId").value = "";
+      window.removeCurrentAttachment();
       document.getElementById("modalTitle").innerText = "Add Requirement Record";
       document.getElementById("recordModal").classList.add("hidden");
     };
