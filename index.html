@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QE Customer Requirement Center</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK (Compat Version for standalone browser use) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Top Navigation -->
+  <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">Quality Requirement & Change Center</h1>
+        <p class="text-xs text-indigo-200">Customer Notes, Ad-Hoc Directives & Effective Dates Tracker</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="exportToCSV()" class="bg-indigo-700 hover:bg-indigo-600 px-3 py-2 rounded-lg text-sm font-medium transition shadow">
+          📥 Export CSV
+        </button>
+        <button onclick="openModal()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-semibold transition shadow flex items-center gap-1">
+          <span>+</span> Add Requirement
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    
+    <!-- Summary / Filters -->
+    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+      <div class="w-full md:w-1/3">
+        <input type="text" id="searchInput" oninput="filterData()" placeholder="Search Part No, Customer, Keyword..." 
+          class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm" />
+      </div>
+      <div class="flex flex-wrap gap-2 w-full md:w-auto">
+        <select id="filterStatus" onchange="filterData()" class="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none">
+          <option value="ALL">All Status</option>
+          <option value="Active">Active</option>
+          <option value="Pending">Pending / Upcoming</option>
+          <option value="Temporary">Temporary Deviation</option>
+          <option value="Closed">Closed / Obsolete</option>
+        </select>
+        <select id="filterSource" onchange="filterData()" class="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none">
+          <option value="ALL">All Sources</option>
+          <option value="Customer Email">Customer Email</option>
+          <option value="Manager Directive">Manager Directive</option>
+          <option value="Sales Instruction">Sales Instruction</option>
+          <option value="President Memo">President Memo</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Requirements Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+      <table class="w-full text-left text-sm border-collapse">
+        <thead class="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
+          <tr>
+            <th class="p-3">Customer / Project</th>
+            <th class="p-3">Part No / Model</th>
+            <th class="p-3">Requirement / Change Detail</th>
+            <th class="p-3">Effective Date</th>
+            <th class="p-3">Origin / Source</th>
+            <th class="p-3">Status</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="requirementsTableBody" class="divide-y divide-slate-100">
+          <tr>
+            <td colspan="7" class="text-center py-8 text-slate-400">Loading requirements...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Modal Form (Add / Edit) -->
+  <div id="recordModal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto">
+      <h2 id="modalTitle" class="text-lg font-bold text-slate-800 mb-4">Add Requirement Record</h2>
+      
+      <form id="reqForm" onsubmit="saveRequirement(event)" class="space-y-4 text-sm">
+        <input type="hidden" id="recordId" />
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Customer Name *</label>
+            <input type="text" id="custName" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Dyson, Apple" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Part No / Model *</label>
+            <input type="text" id="partNo" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. P1024-RevB" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Origin / Source *</label>
+            <select id="source" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500 bg-white">
+              <option value="Customer Email">Customer Email</option>
+              <option value="Manager Directive">Manager Directive</option>
+              <option value="Sales Instruction">Sales Instruction</option>
+              <option value="President Memo">President Memo</option>
+              <option value="Verbal / Meeting">Verbal / Meeting</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Reference / Email Subject</label>
+            <input type="text" id="referenceDoc" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. Email dated 12-Oct" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Requirement / Change Details *</label>
+          <textarea id="details" rows="3" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Describe the tolerance change, visual defect limit, packaging spec, etc."></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Effective Date *</label>
+            <input type="date" id="effectiveDate" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Status *</label>
+            <select id="status" required class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500 bg-white">
+              <option value="Active">Active (Ongoing)</option>
+              <option value="Pending">Pending (Future Date)</option>
+              <option value="Temporary">Temporary Deviation</option>
+              <option value="Closed">Closed / Superseded</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Station / Affected Process</label>
+          <input type="text" id="stations" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="e.g. SMT Line 2, Final Inspection, Packing" />
+        </div>
+
+        <div class="flex justify-end gap-2 pt-4 border-t">
+          <button type="button" onclick="closeModal()" class="px-4 py-2 border rounded-lg hover:bg-slate-100">Cancel</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg shadow">Save Record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const COLLECTION_NAME = "customer_requirements";
+
+    let localRecords = [];
+
+    // ==========================================
+    // 2. REAL-TIME DATA LISTENER
+    // ==========================================
+    db.collection(COLLECTION_NAME).orderBy("effectiveDate", "desc").onSnapshot((snapshot) => {
+      localRecords = [];
+      snapshot.forEach((doc) => {
+        localRecords.push({ id: doc.id, ...doc.data() });
+      });
+      renderTable(localRecords);
+    }, (error) => {
+      console.error("Firestore Error:", error);
+      alert("Error loading data. Check Firestore rules or config.");
+    });
+
+    // ==========================================
+    // 3. TABLE RENDERING & FILTERING
+    // ==========================================
+    function renderTable(data) {
+      const tbody = document.getElementById("requirementsTableBody");
+      tbody.innerHTML = "";
+
+      if (data.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">No requirements found.</td></tr>`;
+        return;
+      }
+
+      data.forEach((item) => {
+        const badgeColors = {
+          "Active": "bg-emerald-100 text-emerald-800",
+          "Pending": "bg-amber-100 text-amber-800",
+          "Temporary": "bg-purple-100 text-purple-800",
+          "Closed": "bg-slate-100 text-slate-600"
+        };
+        const statusBadge = badgeColors[item.status] || "bg-slate-100 text-slate-800";
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
+        tr.innerHTML = `
+          <td class="p-3 font-semibold text-slate-900">${escapeHtml(item.customer)}</td>
+          <td class="p-3 font-mono text-xs text-indigo-700 bg-indigo-50/50 rounded inline-block my-2">${escapeHtml(item.partNo)}</td>
+          <td class="p-3 max-w-sm">
+            <div class="font-medium text-slate-800 whitespace-pre-wrap">${escapeHtml(item.details)}</div>
+            ${item.stations ? `<span class="text-xs text-slate-400 block mt-1">📍 Station: ${escapeHtml(item.stations)}</span>` : ""}
+          </td>
+          <td class="p-3 font-mono text-slate-600 whitespace-nowrap">${escapeHtml(item.effectiveDate)}</td>
+          <td class="p-3">
+            <span class="text-xs font-medium text-slate-700 block">${escapeHtml(item.source)}</span>
+            <span class="text-[11px] text-slate-400 block">${escapeHtml(item.referenceDoc || "-")}</span>
+          </td>
+          <td class="p-3">
+            <span class="px-2 py-0.5 text-xs font-semibold rounded-full ${statusBadge}">${escapeHtml(item.status)}</span>
+          </td>
+          <td class="p-3 text-right space-x-1 whitespace-nowrap">
+            <button onclick="editRecord('${item.id}')" class="text-indigo-600 hover:text-indigo-900 text-xs font-semibold px-2 py-1">Edit</button>
+            <button onclick="deleteRecord('${item.id}')" class="text-rose-600 hover:text-rose-900 text-xs font-semibold px-2 py-1">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterData() {
+      const query = document.getElementById("searchInput").value.toLowerCase();
+      const status = document.getElementById("filterStatus").value;
+      const source = document.getElementById("filterSource").value;
+
+      const filtered = localRecords.filter((r) => {
+        const matchesQuery = 
+          r.customer.toLowerCase().includes(query) ||
+          r.partNo.toLowerCase().includes(query) ||
+          r.details.toLowerCase().includes(query) ||
+          (r.stations && r.stations.toLowerCase().includes(query));
+
+        const matchesStatus = (status === "ALL" || r.status === status);
+        const matchesSource = (source === "ALL" || r.source === source);
+
+        return matchesQuery && matchesStatus && matchesSource;
+      });
+
+      renderTable(filtered);
+    }
+
+    // ==========================================
+    // 4. CRUD OPERATIONS
+    // ==========================================
+    function saveRequirement(e) {
+      e.preventDefault();
+      const id = document.getElementById("recordId").value;
+      const record = {
+        customer: document.getElementById("custName").value.trim(),
+        partNo: document.getElementById("partNo").value.trim(),
+        source: document.getElementById("source").value,
+        referenceDoc: document.getElementById("referenceDoc").value.trim(),
+        details: document.getElementById("details").value.trim(),
+        effectiveDate: document.getElementById("effectiveDate").value,
+        status: document.getElementById("status").value,
+        stations: document.getElementById("stations").value.trim(),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (id) {
+        db.collection(COLLECTION_NAME).doc(id).update(record).then(() => closeModal());
+      } else {
+        record.createdAt = new Date().toISOString();
+        db.collection(COLLECTION_NAME).add(record).then(() => closeModal());
+      }
+    }
+
+    function editRecord(id) {
+      const item = localRecords.find((r) => r.id === id);
+      if (!item) return;
+
+      document.getElementById("recordId").value = item.id;
+      document.getElementById("custName").value = item.customer;
+      document.getElementById("partNo").value = item.partNo;
+      document.getElementById("source").value = item.source;
+      document.getElementById("referenceDoc").value = item.referenceDoc || "";
+      document.getElementById("details").value = item.details;
+      document.getElementById("effectiveDate").value = item.effectiveDate;
+      document.getElementById("status").value = item.status;
+      document.getElementById("stations").value = item.stations || "";
+
+      document.getElementById("modalTitle").innerText = "Edit Requirement Record";
+      openModal();
+    }
+
+    function deleteRecord(id) {
+      if (confirm("Are you sure you want to delete this requirement record?")) {
+        db.collection(COLLECTION_NAME).doc(id).delete();
+      }
+    }
+
+    // ==========================================
+    // 5. CSV EXPORT & UTILS
+    // ==========================================
+    function exportToCSV() {
+      if (!localRecords.length) return alert("No records to export.");
+      let csv = "Customer,Part Number,Details,Effective Date,Source,Reference,Status,Stations\n";
+      localRecords.forEach((r) => {
+        csv += `"${r.customer}","${r.partNo}","${r.details.replace(/"/g, '""')}","${r.effectiveDate}","${r.source}","${r.referenceDoc || ''}","${r.status}","${r.stations || ''}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `Quality_Requirements_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+    }
+
+    function openModal() {
+      document.getElementById("recordModal").classList.remove("hidden");
+    }
+
+    function closeModal() {
+      document.getElementById("reqForm").reset();
+      document.getElementById("recordId").value = "";
+      document.getElementById("modalTitle").innerText = "Add Requirement Record";
+      document.getElementById("recordModal").classList.add("hidden");
+    }
+
+    function escapeHtml(str) {
+      return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+  </script>
+</body>
+</html>
