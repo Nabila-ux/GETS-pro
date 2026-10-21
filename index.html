@@ -63,7 +63,7 @@
             <th class="p-3">Customer / Project</th>
             <th class="p-3">Part No / Model</th>
             <th class="p-3">Requirement / Change Detail</th>
-            <th class="p-3">Attachment / Proof</th>
+            <th class="p-3">Attachment</th>
             <th class="p-3">Effective Date</th>
             <th class="p-3">Origin / Source</th>
             <th class="p-3">Status</th>
@@ -72,7 +72,7 @@
         </thead>
         <tbody id="requirementsTableBody" class="divide-y divide-slate-100">
           <tr>
-            <td colspan="8" class="text-center py-8 text-slate-400">Loading records from Firebase...</td>
+            <td colspan="8" class="text-center py-8 text-slate-400">Loading records...</td>
           </tr>
         </tbody>
       </table>
@@ -123,19 +123,17 @@
           <textarea id="details" rows="3" class="w-full border rounded p-2 focus:ring-1 focus:ring-indigo-500" placeholder="Describe the tolerance change, visual defect limit, packing spec, etc."></textarea>
         </div>
 
-        <!-- File Upload Section -->
+        <!-- Attachment Box -->
         <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-          <label class="block text-xs font-semibold text-slate-700 mb-1">Upload Proof / Attachment (Image / PDF / Doc)</label>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Attach Image / PDF / Doc</label>
           <input type="file" id="fileAttachment" accept="image/*,.pdf,.doc,.docx" 
-            class="block w-full text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
-          <p class="text-[11px] text-slate-400 mt-1">Photos are automatically compressed. PDF/Docs under 800KB supported.</p>
+            class="block w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer" />
           
           <div id="currentAttachmentInfo" class="mt-2 text-xs text-slate-600 hidden flex items-center justify-between bg-white p-2 border rounded">
-            <div class="flex items-center gap-1 truncate max-w-[220px]">
-              <span>📎 Current:</span>
-              <span id="currentAttachmentName" class="font-medium text-indigo-600 truncate"></span>
-            </div>
-            <button type="button" onclick="removeCurrentAttachment()" class="text-rose-600 font-semibold hover:underline text-xs">Remove</button>
+            <span id="currentAttachmentName" class="font-medium text-indigo-600 truncate max-w-[200px]"></span>
+            <button type="button" onclick="removeCurrentAttachment()" class="text-rose-600 font-semibold hover:underline">
+              🗑️ Delete Attachment
+            </button>
           </div>
         </div>
 
@@ -169,7 +167,7 @@
     </div>
   </div>
 
-  <!-- Image Viewer Modal (Click to View Full Size) -->
+  <!-- Fullscreen Image Viewer Modal -->
   <div id="imageViewerModal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50" onclick="closeImageViewer()">
     <div class="max-w-4xl max-h-[90vh] bg-white p-2 rounded-xl shadow-2xl relative" onclick="event.stopPropagation()">
       <button onclick="closeImageViewer()" class="absolute -top-3 -right-3 bg-white text-slate-800 rounded-full w-8 h-8 font-bold shadow hover:bg-slate-100">✕</button>
@@ -219,13 +217,11 @@
     }, (error) => {
       console.error("Firestore Error: ", error);
       document.getElementById("requirementsTableBody").innerHTML = `
-        <tr><td colspan="8" class="text-center py-6 text-red-500 font-medium">
-          Error: ${error.message}
-        </td></tr>
+        <tr><td colspan="8" class="text-center py-6 text-red-500 font-medium">Error: ${error.message}</td></tr>
       `;
     });
 
-    // Render Table
+    // Render Table with Instant Thumbnail & Delete Attachment Button
     function renderTable(data) {
       const tbody = document.getElementById("requirementsTableBody");
       tbody.innerHTML = "";
@@ -244,34 +240,46 @@
         };
         const statusBadge = badgeColors[item.status] || "bg-slate-100 text-slate-800";
 
-        // Display Attachment preview
+        // Display Attachment preview & Remove Button
         let attachmentHtml = `<span class="text-xs text-slate-300">-</span>`;
         if (item.attachment && item.attachment.data) {
           const isImage = item.attachment.type && item.attachment.type.startsWith("image/");
           const isPdf = item.attachment.type && item.attachment.type.includes("pdf");
 
+          let fileBtn = '';
           if (isImage) {
-            attachmentHtml = `
+            fileBtn = `
               <img src="${item.attachment.data}" alt="thumbnail" 
                 onclick="viewImage('${item.attachment.data}')"
-                class="h-12 w-12 object-cover rounded-lg border border-slate-200 cursor-pointer hover:scale-105 transition shadow-sm" 
-                title="Click to view full image" />
+                class="h-10 w-10 object-cover rounded border border-slate-200 cursor-pointer hover:scale-105 transition shadow-sm" 
+                title="Click to zoom in" />
             `;
           } else if (isPdf) {
-            attachmentHtml = `
-              <a href="${item.attachment.data}" download="${item.attachment.name || 'document.pdf'}" 
-                class="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg shadow-sm">
-                📄 View PDF
+            fileBtn = `
+              <a href="${item.attachment.data}" download="${item.attachment.name || 'doc.pdf'}" 
+                class="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-2 py-1 rounded">
+                📄 PDF
               </a>
             `;
           } else {
-            attachmentHtml = `
-              <a href="${item.attachment.data}" download="${item.attachment.name || 'document'}" 
-                class="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg shadow-sm">
-                📎 Download Doc
+            fileBtn = `
+              <a href="${item.attachment.data}" download="${item.attachment.name || 'doc'}" 
+                class="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2 py-1 rounded">
+                📎 Doc
               </a>
             `;
           }
+
+          attachmentHtml = `
+            <div class="flex flex-col items-start gap-1">
+              ${fileBtn}
+              <button onclick="deleteAttachmentOnly('${item.id}')" 
+                class="text-[10px] text-rose-600 hover:text-rose-800 hover:underline font-semibold" 
+                title="Remove attachment from this line">
+                🗑️ Remove
+              </button>
+            </div>
+          `;
         }
 
         const tr = document.createElement("tr");
@@ -301,74 +309,67 @@
       });
     }
 
-    // Helper: Compress Image to Base64
-    function processFile(file) {
+    // Ultra-Fast File Processing (Max 800px, 0.55 quality, finishes in ~0.1s)
+    function fastProcessFile(file) {
       return new Promise((resolve, reject) => {
-        if (file.size > 15 * 1024 * 1024) {
-          return reject(new Error("File is too large! Maximum limit is 15MB."));
-        }
-
         const reader = new FileReader();
+
         if (file.type.startsWith("image/")) {
+          reader.readAsDataURL(file);
           reader.onload = (e) => {
             const img = new Image();
+            img.src = e.target.result;
             img.onload = () => {
-              // Canvas compression
               const canvas = document.createElement("canvas");
-              let width = img.width;
-              let height = img.height;
-              const maxDim = 1200; // Resize large camera photos
+              const maxDim = 800; // Fast resize: produces tiny ~40KB image
+              let w = img.width;
+              let h = img.height;
 
-              if (width > maxDim || height > maxDim) {
-                if (width > height) {
-                  height = Math.round((height * maxDim) / width);
-                  width = maxDim;
-                } else {
-                  width = Math.round((width * maxDim) / height);
-                  height = maxDim;
-                }
+              if (w > maxDim || h > maxDim) {
+                if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+                else { w = Math.round((w * maxDim) / h); h = maxDim; }
               }
 
-              canvas.width = width;
-              canvas.height = height;
+              canvas.width = w;
+              canvas.height = h;
               const ctx = canvas.getContext("2d");
-              ctx.drawImage(img, 0, 0, width, height);
+              ctx.drawImage(img, 0, 0, w, h);
 
-              // 75% quality JPEG
-              const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.75);
+              // 0.55 JPEG quality creates very lightweight and crisp preview
+              const fastDataUrl = canvas.toDataURL("image/jpeg", 0.55);
               resolve({
                 name: file.name,
                 type: "image/jpeg",
-                data: compressedDataUrl
+                data: fastDataUrl
               });
             };
-            img.onerror = () => reject(new Error("Failed to load image."));
-            img.src = e.target.result;
+            img.onerror = () => reject(new Error("Unable to read image."));
           };
-          reader.readAsDataURL(file);
+          reader.onerror = () => reject(new Error("Failed to load file."));
         } else {
-          // PDF or document
-          if (file.size > 800 * 1024) {
-            return reject(new Error("PDF / Documents must be under 800KB."));
+          // PDF or Docs limit to 600KB to guarantee instant saving
+          if (file.size > 600 * 1024) {
+            return reject(new Error("PDF / Document is too large! Please choose a document under 600KB."));
           }
-          reader.onload = (e) => {
+          reader.readAsDataURL(file);
+          reader.onload = () => {
             resolve({
               name: file.name,
               type: file.type || "application/octet-stream",
-              data: e.target.result
+              data: reader.result
             });
           };
-          reader.readAsDataURL(file);
+          reader.onerror = () => reject(new Error("Failed to load document."));
         }
       });
     }
 
-    // Save Record
+    // Save Record (Instant)
     window.saveRequirement = async function(e) {
       e.preventDefault();
       const btn = document.getElementById("saveBtn");
       btn.disabled = true;
-      btn.innerText = "Processing & Saving...";
+      btn.innerText = "Saving (Fast)...";
 
       const id = document.getElementById("recordId").value;
       const fileInput = document.getElementById("fileAttachment");
@@ -387,11 +388,8 @@
 
       try {
         if (fileInput.files.length > 0) {
-          btn.innerText = "Compressing File...";
-          attachment = await processFile(fileInput.files[0]);
+          attachment = await fastProcessFile(fileInput.files[0]);
         }
-
-        btn.innerText = "Saving to Database...";
 
         const record = {
           customer: document.getElementById("custName").value.trim() || "General Customer",
@@ -423,6 +421,20 @@
       }
     };
 
+    // DIRECT BUTTON: Delete Attachment Only from Table
+    window.deleteAttachmentOnly = async function(id) {
+      if (confirm("Delete the attachment from this requirement?")) {
+        try {
+          await updateDoc(doc(db, "customer_requirements", id), {
+            attachment: null,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          alert("Failed to delete attachment: " + err.message);
+        }
+      }
+    };
+
     window.editRecord = function(id) {
       const item = localRecords.find((r) => r.id === id);
       if (!item) return;
@@ -451,10 +463,12 @@
       window.openModal();
     };
 
+    // Remove Attachment inside Modal
     window.removeCurrentAttachment = function() {
       document.getElementById("existingAttachmentData").value = "";
       document.getElementById("existingAttachmentName").value = "";
       document.getElementById("existingAttachmentType").value = "";
+      document.getElementById("fileAttachment").value = "";
       document.getElementById("currentAttachmentInfo").classList.add("hidden");
     };
 
